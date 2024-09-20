@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from classic_rock_hits_cli.main import query_ai_model, get_classic_rock_hits, format_as_markdown
+from classic_rock_hits_cli.main import query_ai_model, get_classic_rock_hits, format_as_markdown, parse_ai_response
 
 @pytest.fixture
 def mock_response():
@@ -24,21 +24,42 @@ def test_query_ai_model_error():
         result = query_ai_model("Test prompt")
         assert "Error" in result
 
+def test_parse_ai_response_json():
+    json_response = '{"The Beatles": ["Hey Jude", "Let It Be"]}'
+    result = parse_ai_response(json_response)
+    assert isinstance(result, dict)
+    assert "The Beatles" in result
+
+def test_parse_ai_response_python_literal():
+    python_literal = "{'The Beatles': ['Hey Jude', 'Let It Be']}"
+    result = parse_ai_response(python_literal)
+    assert isinstance(result, dict)
+    assert "The Beatles" in result
+
+def test_parse_ai_response_invalid():
+    invalid_response = "This is not a valid JSON or Python literal"
+    result = parse_ai_response(invalid_response)
+    assert result is None
+
 def test_get_classic_rock_hits(mock_response):
     with patch('classic_rock_hits_cli.main.query_ai_model') as mock_query:
-        mock_query.return_value = '{"The Beatles": ["Hey Jude", "Let It Be"], "Led Zeppelin": ["Stairway to Heaven", "Kashmir"]}'
-        
-        result = get_classic_rock_hits(1970)
-        assert isinstance(result, dict)
-        assert "The Beatles" in result
-        assert "Led Zeppelin" in result
+        with patch('classic_rock_hits_cli.main.parse_ai_response') as mock_parse:
+            mock_query.return_value = "Raw AI response"
+            mock_parse.return_value = mock_response
+            
+            result = get_classic_rock_hits(1970)
+            assert isinstance(result, dict)
+            assert "The Beatles" in result
+            assert "Led Zeppelin" in result
 
 def test_get_classic_rock_hits_error():
     with patch('classic_rock_hits_cli.main.query_ai_model') as mock_query:
-        mock_query.return_value = 'Invalid JSON'
-        
-        result = get_classic_rock_hits(1970)
-        assert "error" in result
+        with patch('classic_rock_hits_cli.main.parse_ai_response') as mock_parse:
+            mock_query.return_value = "Raw AI response"
+            mock_parse.return_value = None
+            
+            result = get_classic_rock_hits(1970)
+            assert "error" in result
 
 def test_format_as_markdown(mock_response):
     year = 1970
