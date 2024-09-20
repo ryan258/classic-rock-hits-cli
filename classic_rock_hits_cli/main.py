@@ -9,6 +9,7 @@ from typing import Dict, List, Union, Tuple
 import re
 from functools import wraps
 import time
+from openai import OpenAI
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -18,8 +19,13 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Get API details from environment variables
-API_URL = os.getenv('API_URL', 'http://localhost:11434/api/generate')
-MODEL_NAME = os.getenv('MODEL_NAME', 'llama3.1:latest')
+LLAMA_API_URL = os.getenv('API_URL', 'http://localhost:11434/api/generate')
+LLAMA_MODEL_NAME = os.getenv('MODEL_NAME', 'llama3.1:latest')
+OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME', 'gpt-4o-mini-2024-07-18')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
+# Set up OpenAI client
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 def retry(exceptions, tries=4, delay=3, backoff=2):
     """
@@ -42,19 +48,29 @@ def retry(exceptions, tries=4, delay=3, backoff=2):
     return decorator
 
 @retry((requests.RequestException, requests.ConnectionError), tries=3, delay=1)
-def query_ai_model(prompt: str) -> str:
+def query_ai_model(prompt: str, model: str = "llama") -> str:
     """
-    Send a query to the local Ollama model and return the response.
+    Send a query to the specified AI model and return the response.
     """
-    data = {
-        "model": MODEL_NAME,
-        "prompt": prompt,
-        "stream": False
-    }
-    
-    response = requests.post(API_URL, json=data, timeout=30)
-    response.raise_for_status()
-    return response.json()['response']
+    if model == "llama":
+        data = {
+            "model": LLAMA_MODEL_NAME,
+            "prompt": prompt,
+            "stream": False
+        }
+        
+        response = requests.post(LLAMA_API_URL, json=data, timeout=30)
+        response.raise_for_status()
+        return response.json()['response']
+    elif model == "gpt4":
+        response = openai_client.chat.completions.create(
+            model=OPENAI_MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500
+        )
+        return response.choices[0].message.content
+    else:
+        raise ValueError(f"Unknown model: {model}")
 
 def extract_dict_from_response(response: str) -> Tuple[Union[Dict[str, List[str]], None], str]:
     """
@@ -69,7 +85,7 @@ def extract_dict_from_response(response: str) -> Tuple[Union[Dict[str, List[str]
     # Next, try to find and evaluate a Python dictionary in the response
     try:
         # Find content between triple backticks
-        code_block_match = re.search(r'```python\s*(.*?)```', response, re.DOTALL)
+        code_block_match = re.search(r'```(?:python)?\s*(.*?)```', response, re.DOTALL)
         if code_block_match:
             code_block = code_block_match.group(1)
             # Extract the dictionary assignment
@@ -93,16 +109,16 @@ def extract_dict_from_response(response: str) -> Tuple[Union[Dict[str, List[str]
 
     return None, "failed"
 
-def get_classic_rock_hits(year: int) -> Dict[str, Union[List[str], str]]:
+def get_classic_rock_hits(year: int, model: str = "llama") -> Dict[str, Union[List[str], str]]:
     """
-    Get classic rock hits for a specific year using the AI model.
+    Get classic rock hits for a specific year using the specified AI model.
     """
     prompt = (f"Provide a Python dictionary of the top 10 classic rock artists from {year} "
               f"and their top 5 hits of all time. The keys should be artist names and the "
               f"values should be lists of their top hits. Format your response as a Python code block.")
     
     try:
-        response = query_ai_model(prompt)
+        response = query_ai_model(prompt, model)
         logger.debug(f"Raw AI response: {response[:500]}...")  # Log first 500 chars for brevity
         
         parsed_response, method = extract_dict_from_response(response)
@@ -132,12 +148,13 @@ def format_as_markdown(year: int, data: Dict[str, List[str]]) -> str:
 
 @click.command()
 @click.option('--year', prompt='Enter the year', help='The year to get classic rock hits for', type=int)
-def main(year: int):
+@click.option('--model', type=click.Choice(['llama', 'gpt4']), default='llama', help='AI model to use')
+def main(year: int, model: str):
     """
     Main function to run the Classic Rock Hits CLI application.
     """
-    click.echo(f"Fetching classic rock hits for {year}...")
-    hits_data = get_classic_rock_hits(year)
+    click.echo(f"Fetching classic rock hits for {year} using {model.upper()} model...")
+    hits_data = get_classic_rock_hits(year, model)
     
     if isinstance(hits_data, dict) and "error" in hits_data:
         click.echo(click.style(f"Error: {hits_data['error']}", fg='red'))
@@ -153,7 +170,7 @@ def main(year: int):
     click.echo(markdown_output)
     
     # Save the output to a file
-    filename = f"classic_rock_hits_{year}.md"
+    filename = f"classic_rock_hits_{year}_{model}.md"
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(markdown_output)
     click.echo(click.style(f"\nOutput saved to {filename}", fg='green'))
