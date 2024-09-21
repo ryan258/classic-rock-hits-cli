@@ -29,8 +29,8 @@ class BandInfo(BaseModel):
     songs: List[str]
     career_phase: str
 
-class ClassicRockHits(BaseModel):
-    classic_rock_artists: Dict[str, BandInfo]
+class MusicHits(BaseModel):
+    artists: Dict[str, BandInfo]
 
 # 🎤 Query AI model
 def query_ai_model(prompt: str) -> str:
@@ -55,20 +55,19 @@ def parse_ai_response(response: str) -> Optional[Dict[str, BandInfo]]:
             response = response.strip('`').strip()
         
         parsed = json.loads(response)
-        if "classic_rock_artists" in parsed:
-            return {artist: BandInfo(**info) for artist, info in parsed["classic_rock_artists"].items()}
+        if "artists" in parsed:
+            return {artist: BandInfo(**info) for artist, info in parsed["artists"].items()}
         return {artist: BandInfo(**info) for artist, info in parsed.items()}
     except json.JSONDecodeError:
         logger.error(f"❌ Failed to parse AI response: {response}")
         return None
 
-# 🎵 Get classic rock hits
-def get_classic_rock_hits(year: int) -> Dict[str, BandInfo]:
-    logger.info(f"🔍 Getting classic rock hits for year {year}")
-    prompt = f"""Provide information about the top 10 rock artists who were active or particularly influential in {year}, 
+def get_music_hits(year: int, genre: str) -> Dict[str, BandInfo]:
+    logger.info(f"🔍 Getting {genre} hits for year {year}")
+    prompt = f"""Provide information about the top 10 {genre} artists who were active or particularly influential in {year}, 
     along with their most popular or significant songs released in {year} and a brief description of their career phase during that year. 
     Format the response as a JSON object with the structure: 
-    {{"classic_rock_artists": {{"Artist Name": {{"songs": ["Song 1", "Song 2"], "career_phase": "Brief description"}}, ...}}}}
+    {{"artists": {{"Artist Name": {{"songs": ["Song 1", "Song 2", ...], "career_phase": "Brief description"}}, ...}}}}
     Ensure that the response is valid JSON and matches this exact structure. Do not include any markdown formatting or code block indicators."""
     
     try:
@@ -79,13 +78,12 @@ def get_classic_rock_hits(year: int) -> Dict[str, BandInfo]:
         else:
             raise ValueError(f"Failed to parse AI response: {raw_response}")
     except Exception as e:
-        logger.error(f"❌ Error getting classic rock hits: {str(e)}")
+        logger.error(f"❌ Error getting {genre} hits: {str(e)}")
         return {"error": str(e)}
 
-# 📝 Format as markdown
-def format_as_markdown(year: int, data: Dict[str, BandInfo]) -> str:
-    logger.info("📊 Formatting data as markdown")
-    markdown = f"# 🎸 Classic Rock Hits from {year}\n\n"
+def format_as_markdown(year: int, genre: str, data: Dict[str, BandInfo]) -> str:
+    logger.info(f"📊 Formatting {genre} data as markdown")
+    markdown = f"# 🎵 {genre.capitalize()} Hits from {year}\n\n"
     for artist, info in data.items():
         markdown += f"## 🎤 {artist}\n"
         markdown += f"*{info.career_phase}*\n\n"
@@ -94,28 +92,27 @@ def format_as_markdown(year: int, data: Dict[str, BandInfo]) -> str:
         markdown += "\n"
     return markdown
 
-# 💾 Save to file
-def save_to_file(content: str, year: int):
-    filename = f"classic_rock_hits_{year}.md"
+def save_to_file(content: str, year: int, genre: str):
+    filename = f"{genre.lower().replace(' ', '_')}_hits_{year}.md"
     with open(filename, "w", encoding="utf-8") as f:
         f.write(content)
     logger.info(f"💾 Data saved to {filename}")
 
-# 🚀 Main CLI function
 @click.command()
 def main(test_mode=False):
     year = click.prompt("🎸 Enter the year", type=int)
-    click.echo(f"🔍 Fetching classic rock hits for {year}...")
+    genre = click.prompt("🎵 Enter the genre (default: classic rock)", default="classic rock")
+    click.echo(f"🔍 Fetching {genre} hits for {year}...")
     
     try:
-        hits_data = get_classic_rock_hits(year)
+        hits_data = get_music_hits(year, genre)
         if isinstance(hits_data, dict) and "error" in hits_data:
             click.echo(f"❌ An error occurred: {hits_data['error']}")
         else:
-            formatted_data = format_as_markdown(year, hits_data)
+            formatted_data = format_as_markdown(year, genre, hits_data)
             click.echo(formatted_data)
-            save_to_file(formatted_data, year)
-            click.echo(f"🎉 Successfully saved classic rock hits for {year}!")
+            save_to_file(formatted_data, year, genre)
+            click.echo(f"🎉 Successfully saved {genre} hits for {year}!")
     except Exception as e:
         click.echo(f"❌ An unexpected error occurred: {str(e)}")
 
