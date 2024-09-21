@@ -88,7 +88,7 @@ def format_as_markdown(year: int, data: Dict[str, BandInfo]) -> str:
     markdown = f"# 🎸 Classic Rock Hits from {year}\n\n"
     for artist, info in data.items():
         markdown += f"## 🎤 {artist}\n"
-        markdown += f"*Career Phase: {info.career_phase}*\n\n"
+        markdown += f"*{info.career_phase}*\n\n"
         for song in info.songs:
             markdown += f"- 🎵 {song}\n"
         markdown += "\n"
